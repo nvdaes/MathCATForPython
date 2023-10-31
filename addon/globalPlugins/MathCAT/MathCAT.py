@@ -26,6 +26,10 @@ from synthDriverHandler import getSynth     # speech engine param setting
 import winUser                              # clipboard manipulation
 import gettext
 _ = gettext.gettext
+
+import addonHandler
+addonHandler.initTranslation() 
+
 from ctypes import windll                   # register clipboard formats
 from typing import Any, Optional
 
@@ -126,7 +130,7 @@ def  ConvertSSMLTextForNVDA(text:str, language:str="") -> list:
             if use_character:
                 out.extend((CharacterModeCommand(True), ch, CharacterModeCommand(False)))
             else:
-                out.extend((" ", "eigh" if ch=="a" and language=="en" else ch, " "))
+                out.extend((" ", "eigh" if ch=="a" and language.startswith("en") else ch, " "))
         elif m.lastgroup == "beep":
             out.append(BeepCommand(2000, 50))
         elif m.lastgroup == "pitch":
@@ -445,6 +449,7 @@ def patched_speak(self, speechSequence: SpeechSequence):  # noqa: C901
         elif type(item) in self.PROSODY_ATTRS:
             if prosody:
                 # Close previous prosody tag.
+                textList.append('<break time="1ms" />')  # hack added for cutoff speech (github.com/NSoiffer/MathCATForPython/issues/55)
                 textList.append("</prosody>")
             attr=self.PROSODY_ATTRS[type(item)]
             if item.multiplier==1:
@@ -482,6 +487,7 @@ def patched_speak(self, speechSequence: SpeechSequence):  # noqa: C901
     text=u"".join(textList)
     # Added saving old rate and then resetting to that -- work around for https://github.com/nvaccess/nvda/issues/15221
     # I'm not clear why this works since _set_rate() is called before the speech is finished speaking
-    oldRate = getSynth()._get_rate()
+    synth = getSynth()
+    oldRate = synth._get_rate()
     _espeak.speak(text)
-    getSynth()._set_rate(oldRate)
+    synth._set_rate(oldRate)
