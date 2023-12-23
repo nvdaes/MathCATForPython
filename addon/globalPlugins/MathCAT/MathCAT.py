@@ -32,6 +32,7 @@ addonHandler.initTranslation()
 
 from ctypes import windll                   # register clipboard formats
 from typing import Any, Optional
+from speech import getCurrentLanguage
 
 from . import libmathcat
 
@@ -71,7 +72,7 @@ PROSODY_COMMANDS = {
 RE_MATH_LANG = re.compile(r'''<math .*(xml:)?lang=["']([^'"]+)["'].*>''')
 def getLanguageToUse(mathMl:str) -> str:
     """Get the language specified in a math tag if the language pref is Auto, else the language preference."""
-    mathCATLanguageSetting = "Auto"
+    mathCATLanguageSetting = 'Auto'
     try:
         # ignore regional differences if the MathCAT language setting doesn't have it.
         mathCATLanguageSetting = libmathcat.GetPreference("Language")
@@ -82,7 +83,7 @@ def getLanguageToUse(mathMl:str) -> str:
         return mathCATLanguageSetting
     
     languageMatch = RE_MATH_LANG.search(mathMl)
-    language = languageMatch.group(2) if languageMatch else speech.getCurrentLanguage() # seems to be current voice's language
+    language = languageMatch.group(2) if languageMatch else getCurrentLanguage()  # seems to be current voice's language
     language = language.lower().replace("_", "-")
     return language
 
@@ -101,6 +102,12 @@ def  ConvertSSMLTextForNVDA(text:str, language:str="") -> list:
     synth = getSynth()
     _monkeyPatchESpeak()
     wpm = synth._percentToParam(synth.rate, 80, 450)
+    try:
+        if synth.rateBoost:
+            wpm *= 3    # a guess based on espeak -- not sure what oneCore does
+    except AttributeError:
+        pass            # SAPI voices don't have 'rateBoost' attr
+
     breakMulti = 180.0 / wpm
     supported_commands = synth.supportedCommands
     use_break = BreakCommand in supported_commands
@@ -185,6 +192,7 @@ class MathCATInteraction(mathPres.MathInteractionNVDAObject):
             speech.speak(ConvertSSMLTextForNVDA(text, self._language))
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Error in starting navigation of math: see NVDA error log for details"))
 
 
@@ -198,6 +206,7 @@ class MathCATInteraction(mathPres.MathInteractionNVDAObject):
             region.rawText = libmathcat.GetBraille("")
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Error in brailling math: see NVDA error log for details"))
             region.rawText = ""
 
@@ -239,14 +248,15 @@ class MathCATInteraction(mathPres.MathInteractionNVDAObject):
             braille.handler.update()
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Error in navigating math: see NVDA error log for details"))
 
 
     _startsWithMath = re.compile("\\s*?<math")
     @script(
-        # For translators: Message to be announced during Keyboard Help
+        # Translators: Message to be announced during Keyboard Help
         description=_("Copy navigation focus to clipboard"), 
-        # For translators: Name of the section in "Input gestures" dialog. 
+        # Translators: Name of the section in "Input gestures" dialog. 
         category = _("Clipboard"),
         gesture="kb:control+c",
     )
@@ -258,9 +268,11 @@ class MathCATInteraction(mathPres.MathInteractionNVDAObject):
             elif self.init_mathml != '':
                 mathml = self.init_mathml
             self._copyToClipAsMathML(mathml)
+            # Translators: copy to clipboard
             ui.message(_("copy"))
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("unable to copy math: see NVDA error log for details"))
 
 
@@ -344,6 +356,7 @@ class MathCAT(mathPres.MathPresentationProvider):
             libmathcat.SetPreference("TTS", "SSML")
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("MathCAT initialization failed: see NVDA error log for details"))
         self._language = ""
 
@@ -354,6 +367,7 @@ class MathCAT(mathPres.MathPresentationProvider):
         except Exception as e:
             log.error(e)
             log.error(f"MathML is {mathml}")
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Illegal MathML found: see NVDA error log for details"))
             libmathcat.SetMathML("<math></math>")    # set it to something
         try:
@@ -372,6 +386,7 @@ class MathCAT(mathPres.MathPresentationProvider):
 
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Error in speaking math: see NVDA error log for details"))
             return [""]
 
@@ -388,12 +403,14 @@ class MathCAT(mathPres.MathPresentationProvider):
         except Exception as e:
             log.error(e)
             log.error(f"MathML is {mathml}")
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Illegal MathML found: see NVDA error log for details"))
             libmathcat.SetMathML("<math></math>")    # set it to something
         try:
             return libmathcat.GetBraille("")
         except Exception as e:
             log.error(e)
+            # Translators: this message directs users to look in the log file 
             speech.speakMessage(_("Error in brailling math: see NVDA error log for details"))
             return ""
 
@@ -485,6 +502,7 @@ def patched_speak(self, speechSequence: SpeechSequence):  # noqa: C901
     if prosody:
         textList.append("</prosody>")
     text=u"".join(textList)
+    # log.info(f"\ntext={text}")
     # Added saving old rate and then resetting to that -- work around for https://github.com/nvaccess/nvda/issues/15221
     # I'm not clear why this works since _set_rate() is called before the speech is finished speaking
     synth = getSynth()

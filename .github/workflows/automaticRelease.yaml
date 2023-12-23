@@ -12,7 +12,7 @@ jobs:
   l10n:
     name: l10n
     continue-on-error: true
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -27,30 +27,31 @@ jobs:
         git pull
         git push
 
-  pre-release:
+  pre-release:  
     name: Pre Release
     needs: l10n
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-    - name: Set up Python 3.8
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: 3.8
+        python-version: 3.11
+        architecture: 'x86'
     - name: Install dependencies
       run: |
         pip install scons markdown
-        sudo apt update
-        sudo apt install gettext
-    - name: Build
+        pip install python-gettext
+    - uses: actions/checkout@v3
+    - name: Set up Rust 
+      run:  cargo build --target i686-pc-windows-msvc --release
+    - name: Copy MathCAT.pyd file and fix wx file
+      run: |
+        cp target/i686-pc-windows-msvc/release/libmathcat_py.dll addon/globalPlugins/MathCAT/libmathcat.pyd
+        sed 's/^import wx\.xrc/# import wx.xrc/' --in-place "addon/globalPlugins/MathCAT/MathCATgui.py"
+    - name: Build with scons
       run: scons version=${{ github.sha }}
-    - uses: actions/checkout@v2
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
     - name: Automatic release
       uses: marvinpinto/action-automatic-releases@latest
       with:

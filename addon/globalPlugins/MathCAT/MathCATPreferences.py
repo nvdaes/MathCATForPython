@@ -24,7 +24,7 @@ PAUSE_FACTOR_LOG_BASE = 1.4
 
 # initialize the user preferences tuples
 user_preferences: Dict[str, Dict[str, Union[int, str, bool]]] = {}
-#Speech_Language is derived from the folder structure
+#Speech_Language is derived from the folder structures
 Speech_Impairment = ("LearningDisability", "Blindness", "LowVision")
 #Speech_SpeechStyle is derived from the yaml files under the selected language
 Speech_Verbosity = ("Terse", "Medium", "Verbose")
@@ -36,7 +36,7 @@ Navigation_NavMode = ("Enhanced", "Simple", "Character")
 Navigation_NavVerbosity = ("Terse", "Medium", "Verbose")
 #Navigation_AutoZoomOut is boolean
 Braille_BrailleNavHighlight = ("Off", "FirstChar", "EndPoints", "All")
-Braille_BrailleCode = ("Nemeth", "UEB", "Vietnam")
+Braille_BrailleCode = ("Nemeth", "UEB", "CMU", "Vietnam")
 
 class UserInterface(MathCATgui.MathCATPreferencesDialog):
     def __init__(self,parent):
@@ -110,6 +110,8 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
             "ee": "Ɛʋɛ",
             "el": "Ελληνικά",
             "en": "English",
+            "en-GB": "English, United Kingdom",
+            "en-US": "English, United States",
             "eo": "Esperanto",
             "es": "Español",
             "fa": "فارسی",
@@ -240,6 +242,9 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
             "yo": "Yorùbá",
             "za": "Cuengh / Tôô / 壮语",
             "zh": "中文",
+            "zh-HANS": "Chinese, Simplified",
+            "zh-HANT": "Chinese, Traditional",
+            "zh-TW": "Chinese, Traditional, Taiwan",
             "zu": "isiZulu"
         }
         return languages
@@ -249,13 +254,35 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
         languages_dict = UserInterface.LanguagesDict()
         #clear the language names in the dialog
         self.m_choiceLanguage.Clear()
+        # Translators: menu item -- use the language of the voice chosen in the NVDA speech settings dialog
+        # "Auto" == "Automatic" -- other items in menu are "English (en)", etc., so this matches that style
+        self.m_choiceLanguage.Append(_("Use Voice's Language (Auto)"))
         #populate the available language names in the dialog
-        for f in os.listdir(UserInterface.path_to_languages_folder()):
-             if os.path.isdir(UserInterface.path_to_languages_folder()+"\\"+f):
-                 if languages_dict.get(f, 'missing') == 'missing':
-                     self.m_choiceLanguage.Append(f + " (" + f + ")")
-                 else:
-                    self.m_choiceLanguage.Append(languages_dict[f] + " (" + f + ")")
+        #the implemented languages are in folders named using the relevant ISO 639-1 code https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
+        for language in os.listdir(UserInterface.path_to_languages_folder()):
+             if os.path.isdir(os.path.join(UserInterface.path_to_languages_folder(),language)):
+                 path_to_language_folder = os.path.join(UserInterface.path_to_languages_folder(), language)
+                 #only add this language if there is a xxx_Rules.yaml file
+                 files = glob.glob(os.path.join(path_to_language_folder,"*_Rules.yaml"))
+                 if files:
+                     #add to the listbox the text for this language together with the code
+                     if languages_dict.get(language, 'missing') != 'missing':
+                         self.m_choiceLanguage.Append(languages_dict[language] + " (" + language + ")")
+                     else:
+                         self.m_choiceLanguage.Append(language + " (" + language + ")")
+                 #the language variants are in folders named using ISO 3166-1 alpha-2 codes https://en.wikipedia.org/wiki/ISO_3166-2
+                 #check if there are language variants in the language folder
+                 for variant in os.listdir(path_to_language_folder):
+                     if os.path.isdir(os.path.join(path_to_language_folder, variant)):
+                         if variant != "SharedRules":
+                             #add to the listbox the text for this language variant together with the code
+                             if languages_dict.get(language + "-" + variant.upper(), 'missing') != 'missing':
+                                self.m_choiceLanguage.Append(languages_dict[language + "-" + variant.upper()] + " (" + language + "-" + variant + ")")
+                             else:
+                                 if languages_dict.get(language, 'missing') != 'missing':
+                                     self.m_choiceLanguage.Append(languages_dict[language] + " (" + language + "-" + variant + ")")
+                                 else:
+                                     self.m_choiceLanguage.Append(language + " (" + language + "-" + variant + ")")
 
     def GetLanguageCode(self):
         lang_selection = self.m_choiceLanguage.GetStringSelection()
@@ -263,10 +290,18 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
         return lang_code
 
     def GetSpeechStyles(self, this_SpeechStyle: str):
+        from speech import getCurrentLanguage
         #clear the SpeechStyle choices
         self.m_choiceSpeechStyle.Clear()
         #get the currently selected language code
         this_language_code = UserInterface.GetLanguageCode(self)
+        log.info(f"\nthis lang={this_language_code}, getCurrentLanguage = {getCurrentLanguage()}")
+
+        if this_language_code == 'Auto':
+            # list the speech styles for the current voice rather than have none listed
+            this_language_code = getCurrentLanguage().lower().replace("_", "-")           
+            # FIX: when dialog is aware of regional dialects, remove this next line that removes the dialect part
+            this_language_code = this_language_code.split('-')[0]   # grab the first part
 
         this_path = os.path.expanduser('~')+"\\AppData\\Roaming\\nvda\\addons\\MathCAT\\globalPlugins\\MathCAT\\Rules\\Languages\\"+this_language_code+"\\*_Rules.yaml"
         #populate the m_choiceSpeechStyle choices
@@ -444,8 +479,8 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
         #Braille:
         #  BrailleNavHighlight: EndPoints   # Highlight with dots 7 & 8 the current nav node -- values are Off, FirstChar, EndPoints, All
         UserInterface.validate("Braille", "BrailleNavHighlight", ["Off", "FirstChar", "EndPoints", "All"], "EndPoints")
-        #  BrailleCode: "Nemeth"                # Any supported braille code (currently Nemeth, UEB, Vietnam)
-        UserInterface.validate("Braille", "BrailleCode", ["Nemeth", "UEB", "Vietnam"], "Nemeth")
+        #  BrailleCode: "Nemeth"                # Any supported braille code (currently Nemeth, UEB, CMU, Vietnam)
+        UserInterface.validate("Braille", "BrailleCode", ["Nemeth", "UEB", "CMU", "Vietnam"], "Nemeth")
 
     @staticmethod
     def write_user_preferences():
@@ -463,7 +498,8 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
         from .MathCAT import ConvertSSMLTextForNVDA
         from  speech import speak
         rate = self.m_sliderRelativeSpeed.GetValue()
-        text = _(u"<prosody rate='XXX%'>the square root of x squared plus y squared</prosody>").replace("XXX", str(rate), 1)
+        # Translators: this is a test string that is spoken. Only translate "the square root of x squared plus y squared"
+        text = _("<prosody rate='XXX%'>the square root of x squared plus y squared</prosody>").replace("XXX", str(rate), 1)
         speak( ConvertSSMLTextForNVDA(text) )
 
     def OnPauseFactorChanged( self, event ):
@@ -472,6 +508,7 @@ class UserInterface(MathCATgui.MathCATPreferencesDialog):
         rate = self.m_sliderRelativeSpeed.GetValue()
         pf_slider = self.m_sliderPauseFactor.GetValue()
         pause_factor = 0 if pf_slider==0 else round(PAUSE_FACTOR_SCALE *math.pow(PAUSE_FACTOR_LOG_BASE, pf_slider))
+        # Translators: this is a test string that is spoken. Only translate "the fraction with numerator" and other parts NOT inside '<.../>', 
         text = _("<prosody rate='{rate}%'>the fraction with numerator <break time='{pause_factor_300}ms'/> <mark name='M63i335o-4'/> <say-as interpret-as='characters'>x</say-as> to the <mark name='M63i335o-5'/> <say-as interpret-as='characters'>n</say-as> <phoneme alphabet='ipa' ph='θ'>-th</phoneme> power <break time='{pause_factor_128}ms'/> <mark name='M63i335o-6'/> plus  <mark name='M63i335o-7'/> 1 <break time='{pause_factor_300}ms'/> and denominator <mark name='M63i335o-10'/> <say-as interpret-as='characters'>x</say-as> to the <mark name='M63i335o-11'/> <say-as interpret-as='characters'>n</say-as> <phoneme alphabet='ipa' ph='θ'>-th</phoneme> power <break time='{pause_factor_128}ms'/> <mark name='M63i335o-12'/> minus  <mark name='M63i335o-13'/> 1 <break time='{pause_factor_600}ms'/>end fraction <break time='{pause_factor_150}ms'/>").format(
             rate=rate,
             pause_factor_128=128*pause_factor//100,
